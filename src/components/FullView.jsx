@@ -350,10 +350,21 @@ export default function Component() {
     const getDiffs = async () => {
       try {
         setChanges([]);
-        await workerThread.getFileStateChanges(
-          commits[index].oid,
-          commits[index + 1].oid
-        );
+        if(commits[index] && commits[index + 1]){
+            console.log(commits[index].oid, commits[index + 1].oid);
+            await workerThread.getFileStateChanges(
+                commits[index].oid,
+                commits[index + 1].oid
+              );
+
+        }else{
+            console.log(commits[0].oid);
+            await workerThread.getFileStateChanges(
+                undefined,
+                commits[0].oid
+              );
+        }
+       
       } catch (error) {
         console.log(error);
       }
@@ -518,7 +529,7 @@ export default function Component() {
                           theme="vs-dark"
                           height="400px"
                           language={diffCode.language}
-                          original={diffCode.originalContent}
+                          original={change.type=="create"?"":diffCode.originalContent}
                           modified={diffCode.oldContent}
                         />
                       </div>

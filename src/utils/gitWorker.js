@@ -71,7 +71,10 @@ const portal = new MagicPortal(self);
 
           // determine modification type
           let type = "equal";
-          let content="";
+          if (commitHash1==undefined){
+            type="create";
+          }
+          let content=await B.content();
           if (Aoid !== Boid) {
             type = "modify";
             content = await B.content();
@@ -83,13 +86,19 @@ const portal = new MagicPortal(self);
           if (Boid === undefined) {
             type = "remove";
           }
+          
           if (Aoid === undefined && Boid === undefined) {
             console.log("Something weird happened:");
             console.log(A);
             console.log(B);
           }
 
-          content=new TextDecoder().decode(content);
+          try {
+            content = new TextDecoder().decode(content);
+          }
+          catch (e) {
+            console.log(e);
+          }
           if (filepath.indexOf('pnpm-lock.yaml') !== -1) {
             content="";
           }
