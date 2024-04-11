@@ -32,7 +32,10 @@ export default function Component({ name }) {
   const [loadingMessage, setLoadingMessage] = useState("");
   const [dirName, setDirName] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
-  const [commitChanges, setCommitChanges] = useState({addition:0,deletion:0});
+  const [commitChanges, setCommitChanges] = useState({
+    addition: 0,
+    deletion: 0,
+  });
   const [commitOid, setCommitOid] = useState("");
   const [myCommitAuthor, setMyCommitAuthor] = useState("");
   const [diffCode, setDiffCode] = useState("");
@@ -147,7 +150,7 @@ export default function Component({ name }) {
   const gitStatus = async () => {
     console.log("Status");
     console.log("Reading dir : ", repo);
-   
+
     //setFetchMessage("");
     await workerThread.setDir("/" + repo);
     let filesList = await workerThread.listFiles({});
@@ -165,7 +168,7 @@ export default function Component({ name }) {
       }
     }
 
-    if(readyToCommit){
+    if (readyToCommit) {
       console.log("Ready to commit");
     }
 
@@ -229,16 +232,19 @@ export default function Component({ name }) {
     let addition = 0;
     let deletion = 0;
     for (const line of lines) {
-      if (line.startsWith("+ ")) {
+      if (line.startsWith("+") && !line.startsWith("+++")) {
         addition = addition + 1;
-        console.log("Addition",line,addition,deletion);
+        console.log("Addition", line, addition, deletion);
       }
-      if (line.startsWith("- ")) {
+      if (line.startsWith("-") && !line.startsWith("---")) {
         deletion = deletion + 1;
-        console.log("deletion",line,addition,deletion);
+        console.log("deletion", line, addition, deletion);
       }
     }
-    setCommitChanges({  addition,deletion });
+    setCommitChanges((prev) => ({
+      addition: prev.addition + addition,
+      deletion: prev.deletion + deletion,
+    }));
 
     setChanges((prev) => [...prev, change]);
   };
@@ -438,7 +444,6 @@ export default function Component({ name }) {
         }
       }
 
-      console.timeEnd("Upload", "s");
       thePhase = thePhase + 1;
     }
 
@@ -513,21 +518,42 @@ export default function Component({ name }) {
       console.log("Reading content of ", path);
       const data = await puter.fs.read("." + path);
       console.log("Writing to fs :", path);
+      const relativePath = path.replace("/" + repo+"/", "");
+      console.log("Relative path", relativePath);
+      try {
+        //await workerThread.add({ filepath: relativePath });
+      } catch (error) {
+        console.log(error);
+      }
 
       const text = await data.text();
       const buffer = await data.arrayBuffer();
 
       const content = new TextEncoder().encode(text);
-      fs.writeFile(path, buffer, (error) => {
+      fs.writeFile(path, buffer, async (error) => {
         if (error) {
           console.error(error);
           //setLoading(false);
         } else {
-          console.log("File saved");
+          console.log("File saved : ", relativePath);
+
+          try{
+            const status = await workerThread.status({ filepath: relativePath });
+            console.log("Status", status);  
+            if (status != "unmodified" || status != "*unmodified") {
+              console.log("Adding " + relativePath);
+              await workerThread.add({ filepath: relativePath });
+            }
+          }
+          catch(error){
+            console.log(error);
+          }
+          
           //readDir(dir);
           //setLoading(false);
         }
       });
+      //
 
       //console.log(content);
       task = task + 1;
@@ -589,7 +615,13 @@ export default function Component({ name }) {
   }, [files]);
 
   const checkout = async (oid) => {
-    await workerThread.checkout({ ref: oid });
+    console.log("Checking out", oid);
+    const ress = await workerThread.checkout({
+      ref: oid,
+      force: true,
+      noUpdateHead: true,
+    });
+    console.log(ress);
   };
 
   const checkoutAction = async (commit) => {
@@ -598,12 +630,14 @@ export default function Component({ name }) {
     setMyCommitAuthor("");
     setCommitOid("");
     //getMasterDif(index);
-    await checkout(commit.oid);
-    gitStatus();
+    console.log("Checking out");
+    console.log(commit);
+    await checkout(commit.commit.oid);
+    //gitStatus();
   };
 
   const compareAction = async (commit, index) => {
-    setCommitChanges({addition:0,deletion:0});
+    setCommitChanges({ addition: 0, deletion: 0 });
     setDiffCode({});
     setCommitMessage(commit.commit.message);
     setMyCommitAuthor(commit.commit.author.name);
@@ -632,6 +666,13 @@ export default function Component({ name }) {
     };
     getDiffs();
   };
+
+  const checkoutBranch = async (branch) => {
+    setCurrentBranch(branch);
+    await workerThread.checkout({ ref: branch });
+    gitStatus();
+  };
+
   return (
     <div className="flex h-screen w-screen bg-gray-800 text-white">
       {loading && (
@@ -676,6 +717,7 @@ export default function Component({ name }) {
         gitPull={gitPull}
         fetchMessage={fetchMessage}
         commitChanges={commitChanges}
+        checkoutBranch={checkoutBranch}
       />
     </div>
   );
@@ -744,7 +786,8 @@ const Rightpannel = ({
   fetchMessage,
   workerThread,
   gitStatus,
-  commitChanges
+  commitChanges,
+  checkoutBranch,
 }) => {
   return (
     <div className="flex flex-col w-2/3">
@@ -757,7 +800,7 @@ const Rightpannel = ({
         fetchMessage={fetchMessage}
         workerThread={workerThread}
         gitStatus={gitStatus}
-       
+        checkoutBranch={checkoutBranch}
       />
       <div className="flex-grow p-4 overflow-auto">
         {myCommitAuthor && (
@@ -769,7 +812,11 @@ const Rightpannel = ({
                   src={`https://eu.ui-avatars.com/api/?name=${myCommitAuthor}&size=32`}
                 />
               </span>
-              <span>{myCommitAuthor} <span className="text-green-500">{`+${commitChanges.addition}`}</span> <span className="text-red-500">{`-${commitChanges.deletion}`}</span></span>
+              <span>
+                {myCommitAuthor}{" "}
+                <span className="text-green-500">{`+${commitChanges.addition}`}</span>{" "}
+                <span className="text-red-500">{`-${commitChanges.deletion}`}</span>
+              </span>
 
               <span className="flex flex-row min-w-fit justify-start space-x-2">
                 {commitMessage.split("\n")[0].substring(0, 50)}
@@ -904,6 +951,7 @@ const RightTop = ({
   fetchMessage,
   workerThread,
   gitStatus,
+  checkoutBranch,
 }) => {
   return (
     <div className="flex items-center justify-between p-4 border-b border-gray-600 text-sm">
@@ -912,9 +960,7 @@ const RightTop = ({
         <select
           value={currentBranch}
           onChange={async (event) => {
-            setCurrentBranch(event.target.value);
-            await workerThread.checkout({ ref: event.target.value });
-            gitStatus();
+            checkoutBranch(event.target.value);
           }}
           className="text-lg my-2 py-2 w-full font-semibold text-light bg-dark"
         >

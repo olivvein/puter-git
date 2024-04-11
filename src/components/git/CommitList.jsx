@@ -32,7 +32,7 @@ const CommitList = ({ commits, checkout, compare }) => {
             <button
             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-1 rounded text-xs"
               onClick={() => {
-                checkout(commit.oid);
+                checkout(commit);
               }}
             >
               CheckOut
