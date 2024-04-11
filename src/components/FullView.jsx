@@ -91,8 +91,8 @@ export default function Component({ name }) {
   const makeCommit = async () => {
     const commitArgs = {
       author: {
-        name: "olivvein",
-        email: "olivier.veinand@gmail.com",
+        name: "samlepirate",
+        email: "samlepirate@gmail.com",
       },
       message: "modified Title",
     };
@@ -103,6 +103,8 @@ export default function Component({ name }) {
   };
 
   const gitPush = async () => {
+    alert("Pushing is not allowed yet :(");
+    return;
     await workerThread.push({
       remote: "origin",
       ref: "main",
@@ -120,7 +122,7 @@ export default function Component({ name }) {
         corsProxy: "https://cors.isomorphic-git.org",
         url: "https://github.com/" + repo,
         depth: 20,
-        author: { name: "olivvein", email: "olivier.veinand@gmail.com" },
+        author: { name: "samlepirate", email: "samlepirate@gmail.com" },
       });
       gitStatus();
     } catch (error) {
@@ -364,9 +366,27 @@ export default function Component({ name }) {
 
         const data = await fs.promises.readFile(
           "/" + theDirPath + "/" + path,
-          "utf8"
         );
-        const blob = new Blob([data], { type: "text/plain" });
+        let fileType="text/plain";
+        if(path.indexOf(".jpeg")!=-1){
+          fileType="image/jpeg";
+        }
+        if(path.indexOf(".png")!=-1){
+          fileType="image/png";
+        }
+        if(path.indexOf(".gif")!=-1){
+          fileType="image/gif";
+        }
+        if(path.indexOf(".svg")!=-1){
+          fileType="image/svg+xml";
+        }
+        if(path.indexOf(".html")!=-1){
+          fileType="text/html";
+        }
+        if(path.indexOf(".webp")!=-1){
+          fileType="image/webp";
+        }
+        const blob = new Blob([data]);
         const theNewFile = new File([blob], path);
         theFilesAsFile.push(theNewFile);
       }
@@ -435,6 +455,7 @@ export default function Component({ name }) {
     console.log(dirs);
     const repoDirs = repo.split("/");
     fs.mkdir("/" + repoDirs[0], (error, success) => {
+      console.log("mkdir : ");
       console.log(error);
       console.log(success);
       fs.mkdir("/" + repoDirs[0] + "/" + repoDirs[1], (error, success) => {
@@ -470,10 +491,12 @@ export default function Component({ name }) {
       console.log("Reading content of ", path);
       const data = await puter.fs.read("." + path);
       console.log("Writing to fs :", path);
+
       const text = await data.text();
-      //console.log(text);
+      const buffer=await data.arrayBuffer();
+      
       const content = new TextEncoder().encode(text);
-      fs.writeFile(path, content, (error) => {
+      fs.writeFile(path, buffer, (error) => {
         if (error) {
           console.error(error);
           //setLoading(false);
