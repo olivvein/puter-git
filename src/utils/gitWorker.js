@@ -30,7 +30,6 @@ const portal = new MagicPortal(self);
       });
     },
     clone: async (args) => {
-      fs = new LightningFS("localRoot4", { wipe: true });
       return git.clone({
         ...args,
         fs,
@@ -47,6 +46,29 @@ const portal = new MagicPortal(self);
           return mainThread.fill(url);
         },
         onAuthFailure({ url, auth }) {
+          console.log(auth);
+          return mainThread.rejected({ url, auth });
+        },
+      });
+    },
+    push: async (args) => {
+      return git.push({
+        ...args,
+        fs,
+        http: GitHttp,
+        dir,
+        onProgress(evt) {
+          mainThread.progress(evt);
+        },
+        onMessage(msg) {
+          mainThread.print(msg);
+        },
+        onAuth(url) {
+          console.log(url);
+          return mainThread.fill(url);
+        },
+        onAuthFailure({ url, auth }) {
+          console.log(auth);
           return mainThread.rejected({ url, auth });
         },
       });
@@ -75,9 +97,11 @@ const portal = new MagicPortal(self);
             type="create";
           }
           let content=await B.content();
+          let content2="";
           if (Aoid !== Boid) {
             type = "modify";
             content = await B.content();
+            content2=await A.content();
           }
           if (Aoid === undefined) {
             type = "add";
@@ -95,24 +119,82 @@ const portal = new MagicPortal(self);
 
           try {
             content = new TextDecoder().decode(content);
+            try{
+              if (type === "modify"){
+                content2 = new TextDecoder().decode(content2);
+              }
+             
+            }catch(e){
+              console.log(e);
+            }
           }
           catch (e) {
             console.log(e);
           }
           if (filepath.indexOf('pnpm-lock.yaml') !== -1) {
             content="";
+            content2="";
           }
 
           mainThread.sendChange({
             path: `/${filepath}`,
             type: type,
             content: content,
+            content3:content2,
           });
         },
       });
     },
+    status: (args) => git.status({ ...args, fs, dir }),
+    add: (args) => git.add({ ...args, fs, dir }),
+    commit: (args) => git.commit({ ...args, fs, dir }),
     listBranches: (args) => git.listBranches({ ...args, fs, dir }),
     listFiles: (args) => git.listFiles({ ...args, fs, dir }),
     log: (args) => git.log({ ...args, fs, dir }),
+    currentBranch: (args) => git.currentBranch({ ...args, fs, dir }),
+    pull: async (args) => {
+      return git.pull({
+        ...args,
+        fs,
+        http: GitHttp,
+        dir,
+        onProgress(evt) {
+          mainThread.progress(evt);
+        },
+        onMessage(msg) {
+          mainThread.print(msg);
+        },
+        onAuth(url) {
+          console.log(url);
+          return mainThread.fill(url);
+        },
+        onAuthFailure({ url, auth }) {
+          console.log(auth);
+          return mainThread.rejected({ url, auth });
+        },
+      });
+    },
+    fetch: async (args) => {
+      return git.fetch({
+        ...args,
+        fs,
+        http: GitHttp,
+        dir,
+        onProgress(evt) {
+          mainThread.progress(evt);
+        },
+        onMessage(msg) {
+          mainThread.getFetch(msg);
+        },
+        onAuth(url) {
+          console.log(url);
+          return mainThread.fill(url);
+        },
+        onAuthFailure({ url, auth }) {
+          console.log(auth);
+          return mainThread.rejected({ url, auth });
+        },
+      });
+    },
   });
 })();
