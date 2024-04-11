@@ -32,6 +32,7 @@ export default function Component({ name }) {
   const [loadingMessage, setLoadingMessage] = useState("");
   const [dirName, setDirName] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
+  const [commitChanges, setCommitChanges] = useState({addition:0,deletion:0});
   const [commitOid, setCommitOid] = useState("");
   const [myCommitAuthor, setMyCommitAuthor] = useState("");
   const [diffCode, setDiffCode] = useState("");
@@ -63,8 +64,6 @@ export default function Component({ name }) {
         setRepo(repos[0]);
       }
 
-      
-
       setAllRepos(repos);
     };
     updateUser();
@@ -76,7 +75,7 @@ export default function Component({ name }) {
     let hasAdded = false;
     for (const file of filesList) {
       const status = await workerThread.status({ filepath: file });
-      if (status != "unmodified") {
+      if (status != "unmodified" || status != "*unmodified") {
         console.log("Adding " + file);
         await workerThread.add({ filepath: file });
         hasAdded = true;
@@ -148,17 +147,26 @@ export default function Component({ name }) {
   const gitStatus = async () => {
     console.log("Status");
     console.log("Reading dir : ", repo);
+   
     //setFetchMessage("");
     await workerThread.setDir("/" + repo);
     let filesList = await workerThread.listFiles({});
     const modified = [];
     console.log(filesList);
+    let readyToCommit = false;
     for (const file of filesList) {
       const status = await workerThread.status({ filepath: file });
-      console.log(file);
+      console.log(file, status);
       if (status != "unmodified") {
-        modified.push(file + " is " + status);
+        modified.push({ file, status });
       }
+      if (status == "modified") {
+        readyToCommit = true;
+      }
+    }
+
+    if(readyToCommit){
+      console.log("Ready to commit");
     }
 
     console.log(modified);
@@ -215,6 +223,22 @@ export default function Component({ name }) {
     if (change.path.indexOf(".md") != -1) {
       change.language = "markdown";
     }
+
+    //count number of addition and deletion in patch
+    const lines = patch.split("\n");
+    let addition = 0;
+    let deletion = 0;
+    for (const line of lines) {
+      if (line.startsWith("+ ")) {
+        addition = addition + 1;
+        console.log("Addition",line,addition,deletion);
+      }
+      if (line.startsWith("- ")) {
+        deletion = deletion + 1;
+        console.log("deletion",line,addition,deletion);
+      }
+    }
+    setCommitChanges({  addition,deletion });
 
     setChanges((prev) => [...prev, change]);
   };
@@ -364,27 +388,25 @@ export default function Component({ name }) {
         //console.log("Reading file", path);
         setLoadingMessage("Reading file", theDirPath + "/" + path);
 
-        const data = await fs.promises.readFile(
-          "/" + theDirPath + "/" + path,
-        );
-        let fileType="text/plain";
-        if(path.indexOf(".jpeg")!=-1){
-          fileType="image/jpeg";
+        const data = await fs.promises.readFile("/" + theDirPath + "/" + path);
+        let fileType = "text/plain";
+        if (path.indexOf(".jpeg") != -1) {
+          fileType = "image/jpeg";
         }
-        if(path.indexOf(".png")!=-1){
-          fileType="image/png";
+        if (path.indexOf(".png") != -1) {
+          fileType = "image/png";
         }
-        if(path.indexOf(".gif")!=-1){
-          fileType="image/gif";
+        if (path.indexOf(".gif") != -1) {
+          fileType = "image/gif";
         }
-        if(path.indexOf(".svg")!=-1){
-          fileType="image/svg+xml";
+        if (path.indexOf(".svg") != -1) {
+          fileType = "image/svg+xml";
         }
-        if(path.indexOf(".html")!=-1){
-          fileType="text/html";
+        if (path.indexOf(".html") != -1) {
+          fileType = "text/html";
         }
-        if(path.indexOf(".webp")!=-1){
-          fileType="image/webp";
+        if (path.indexOf(".webp") != -1) {
+          fileType = "image/webp";
         }
         const blob = new Blob([data]);
         const theNewFile = new File([blob], path);
@@ -493,8 +515,8 @@ export default function Component({ name }) {
       console.log("Writing to fs :", path);
 
       const text = await data.text();
-      const buffer=await data.arrayBuffer();
-      
+      const buffer = await data.arrayBuffer();
+
       const content = new TextEncoder().encode(text);
       fs.writeFile(path, buffer, (error) => {
         if (error) {
@@ -581,6 +603,7 @@ export default function Component({ name }) {
   };
 
   const compareAction = async (commit, index) => {
+    setCommitChanges({addition:0,deletion:0});
     setDiffCode({});
     setCommitMessage(commit.commit.message);
     setMyCommitAuthor(commit.commit.author.name);
@@ -616,248 +639,402 @@ export default function Component({ name }) {
           {loadingMessage}
         </span>
       )}
-      <div className="flex flex-col w-1/3 border-r border-gray-600">
-        <div className="p-0">
-          <div className="flex items-center justify-between">
-            <select
-              value={repo}
-              onChange={(event) => setRepo(event.target.value)}
-              className="text-lg my-2 py-2 w-full font-semibold text-light bg-dark"
-            >
-              {allRepos.map((repot, index) => (
-                <option key={index}>{repot}</option>
-              ))}
-            </select>
-          </div>
 
-          {/* <h2 className="mt-2 mb-4 text-sm font-medium">{repo}</h2> */}
-          <div className="flex space-x-2 justify-between p-4">
-            <form
-              className="flex w-full space-x-2 justify-between"
-              
-            >
-              <input
-                type="text"
-                placeholder="Enter repo name"
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-                className="mt-2 mb-4 text-sm font-medium text-black"
-              />
-              <button
-                onClick={(e)=>{e.preventDefault();doFullClone()}}
-                className="bg-blue-600 px-1 hover:bg-blue-700"
-              >
-                Clone on Browser
-              </button>
-              
-            </form>
-            <button
-                className="bg-blue-600 px-1 hover:bg-blue-700"
-                onClick={gitStatus}
-              >
-                Status
-              </button>
-          </div>
-          <div className="flex space-x-2">
-            <button
-              className="bg-blue-500 hover:bg-blue-600 px-1"
-              onClick={getAllPuterFiles}
-            >
-              Import From Puter
-            </button>
-            <button
-              onClick={syncDirectory}
-              className="bg-blue-500 hover:bg-blue-600 px-1"
-            >
-              Save to Puter
-            </button>
-            <p className="text-xs">{dirName}</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-2">
-          <GitBranchIcon className="w-5 h-5" />
-          <h2>Select Commit to Compare...</h2>
-        </div>
-        <div className="py-4 flex-grow overflow-auto">
-          <div className="flex flex-col py-4 space-y-2">
-            <CommitList
-              commits={commits}
-              checkout={checkoutAction}
-              compare={compareAction}
-            />
-          </div>
-        </div>
+      {/* Left */}
+
+      <LeftPannel
+        repo={repo}
+        setRepo={setRepo}
+        doFullClone={doFullClone}
+        allRepos={allRepos}
+        gitStatus={gitStatus}
+        getAllPuterFiles={getAllPuterFiles}
+        syncDirectory={syncDirectory}
+        dirName={dirName}
+        gitFetch={gitFetch}
+        commits={commits}
+        checkoutAction={checkoutAction}
+        compareAction={compareAction}
+      />
+
+      {/* Right */}
+
+      <Rightpannel
+        myCommitAuthor={myCommitAuthor}
+        commitMessage={commitMessage}
+        changes={changes}
+        diffCode={diffCode}
+        ViewDif={ViewDif}
+        gitAdd={gitAdd}
+        makeCommit={makeCommit}
+        gitPush={gitPush}
+        modifiedFiles={modifiedFiles}
+        branches={branches}
+        currentBranch={currentBranch}
+        setCurrentBranch={setCurrentBranch}
+        gitFetch={gitFetch}
+        gitPull={gitPull}
+        fetchMessage={fetchMessage}
+        commitChanges={commitChanges}
+      />
+    </div>
+  );
+}
+
+const LeftPannel = ({
+  repo,
+  setRepo,
+  doFullClone,
+  allRepos,
+  gitStatus,
+  getAllPuterFiles,
+  syncDirectory,
+  dirName,
+  gitFetch,
+  commits,
+  checkoutAction,
+  compareAction,
+}) => {
+  if (!allRepos) return null;
+
+  return (
+    <div className="flex flex-col w-1/3 border-r border-gray-600">
+      <LeftTop
+        repo={repo}
+        setRepo={setRepo}
+        doFullClone={doFullClone}
+        allRepos={allRepos}
+        gitStatus={gitStatus}
+        getAllPuterFiles={getAllPuterFiles}
+        syncDirectory={syncDirectory}
+        dirName={dirName}
+      />
+      <div className="flex items-center space-x-2">
+        <GitBranchIcon className="w-5 h-5" />
+        <h2>Select Commit to Compare...</h2>
       </div>
-      <div className="flex flex-col w-2/3">
-        <div className="flex items-center justify-between p-4 border-b border-gray-600 text-sm">
-          <div className="flex items-center space-x-2">
-            <GitCommitIcon className="w-5 h-5" />
-            <select
-              value={currentBranch}
-              onChange={async (event) => {
-                setCurrentBranch(event.target.value);
-                await workerThread.checkout({ ref: event.target.value });
-                gitStatus();
-              }}
-              className="text-lg my-2 py-2 w-full font-semibold text-light bg-dark"
-            >
-              {branches.map((branch, index) => (
-                <option key={index}>{branch}</option>
-              ))}
-            </select>
-            <button
-              className="text-lg my-1 py-2  px-8 min-w-fit font-semibold text-light bg-dark flex flex-col justify-between"
-              onClick={gitFetch}
-            >
-              <span className="text-xs text-bold">Fetch</span>{" "}
-              <span className="text-xs">{fetchMessage}</span>
-            </button>
-            <button
-              className="text-lg my-1 py-2  px-8 min-w-fit font-semibold text-light bg-dark"
-              onClick={gitPull}
-            >
-              Pull
-            </button>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <span className="text-sm">On {commitOid.substring(0, 10)}</span>
-            <ChevronDownIcon className="w-5 h-5" />
-          </div>
-          <div className="flex items-center space-x-2">
-            <AlertCircleIcon className="w-5 h-5 text-red-500" />
-            <span className="text-sm">Cannot push</span>
-          </div>
-        </div>
-        <div className="flex-grow p-4 overflow-auto">
-          {myCommitAuthor && (
-            <div className="flex flex-col space-y-4">
-              <div className="flex items-center space-x-2">
-                <span>
-                  <img
-                    className="rounded-lg"
-                    src={`https://eu.ui-avatars.com/api/?name=${myCommitAuthor}&size=32`}
-                  />
-                </span>
-                <span>{myCommitAuthor}</span>
-
-                <span className="flex flex-row min-w-fit justify-start space-x-2">
-                  {commitMessage.split("\n")[0].substring(0, 50)}
-                </span>
-              </div>
-              <h4 className="text-sm font-semibold">
-                {changes.length} changed files
-              </h4>
-
-              {changes.map((change, index) => (
-                <div key={index}>
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center justify-between"></div>
-                  </div>
-
-                  <div className="mt-4 bg-black p-4 rounded text-gray-500">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {diffCode && diffCode.path == change.path ? (
-                          <>
-                            <ChevronDownIcon
-                              onClick={() => {
-                                setDiffCode({});
-                              }}
-                              className="w-5 h-5 cursor-pointer"
-                            />
-                            <span>Hide Diff Editor</span>
-                          </>
-                        ) : (
-                          <>
-                            <ChevronRightIcon
-                              onClick={() => {
-                                ViewDif(change);
-                              }}
-                              className="w-5 h-5 cursor-pointer"
-                            />
-                            <span>Show Diff Editor</span>
-                          </>
-                        )}
-                      </div>
-                      <span className="text-sm font-mono">
-                        {change.type + " : " + change.path}
-                      </span>
-                      <div className="flex items-center space-x-2">
-                        <CopyIcon className="w-5 h-5" />
-                        <ExternalLinkIcon className="w-5 h-5" />
-                      </div>
-                    </div>
-                    <pre className="mt-2 text-xs font-mono overflow-auto">
-                      {diffCode && diffCode.path == change.path ? (
-                        <div className=" w-full">
-                          <DiffEditor
-                            theme="vs-dark"
-                            height="400px"
-                            language={diffCode.language}
-                            original={
-                              change.type == "create" ? "" : diffCode.oldContent
-                            }
-                            modified={diffCode.content3}
-                          />
-                        </div>
-                      ) : (
-                        <>
-                          <code>
-                            {change.content.split("\n").map((line, index) => {
-                              let classs;
-                              if (line.startsWith("+")) {
-                                classs = "bg-green-800 text-gray-200";
-                              } else if (line.startsWith("-")) {
-                                classs = "bg-red-800 text-gray-200";
-                              } else {
-                                classs = "bg-black text-gray-200";
-                              }
-                              return (
-                                <span key={index} className={classs}>
-                                  {line + "\n"}
-                                </span>
-                              );
-                            })}
-                          </code>
-                        </>
-                      )}
-                    </pre>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {modifiedFiles.length > 0 && (
-            <div>
-              {modifiedFiles.map((file, index) => (
-                <div key={index}>{file}</div>
-              ))}
-              <button
-                className="bg-blue-500 hover:bg-blue-600 px-1"
-                onClick={gitAdd}
-              >
-                Add *
-              </button>
-              <button
-                className="bg-blue-500 hover:bg-blue-600 px-1"
-                onClick={makeCommit}
-              >
-                Commit
-              </button>
-            </div>
-          )}
-          <button
-            className="bg-blue-500 hover:bg-blue-600 px-1"
-            onClick={gitPush}
-          >
-            Push
-          </button>
+      <div className="py-4 flex-grow overflow-auto">
+        <div className="flex flex-col py-4 space-y-2">
+          <CommitList
+            commits={commits}
+            checkout={checkoutAction}
+            compare={compareAction}
+          />
         </div>
       </div>
     </div>
   );
-}
+};
+
+const Rightpannel = ({
+  myCommitAuthor,
+  commitMessage,
+  changes,
+  diffCode,
+  ViewDif,
+  gitAdd,
+  makeCommit,
+  gitPush,
+  modifiedFiles,
+  branches,
+  currentBranch,
+  setCurrentBranch,
+  gitFetch,
+  gitPull,
+  fetchMessage,
+  workerThread,
+  gitStatus,
+  commitChanges
+}) => {
+  return (
+    <div className="flex flex-col w-2/3">
+      <RightTop
+        branches={branches}
+        currentBranch={currentBranch}
+        setCurrentBranch={setCurrentBranch}
+        gitFetch={gitFetch}
+        gitPull={gitPull}
+        fetchMessage={fetchMessage}
+        workerThread={workerThread}
+        gitStatus={gitStatus}
+       
+      />
+      <div className="flex-grow p-4 overflow-auto">
+        {myCommitAuthor && (
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center space-x-2">
+              <span>
+                <img
+                  className="rounded-lg"
+                  src={`https://eu.ui-avatars.com/api/?name=${myCommitAuthor}&size=32`}
+                />
+              </span>
+              <span>{myCommitAuthor} <span className="text-green-500">{`+${commitChanges.addition}`}</span> <span className="text-red-500">{`-${commitChanges.deletion}`}</span></span>
+
+              <span className="flex flex-row min-w-fit justify-start space-x-2">
+                {commitMessage.split("\n")[0].substring(0, 50)}
+              </span>
+            </div>
+            <h4 className="text-sm font-semibold">
+              {changes.length} changed files
+            </h4>
+
+            {changes.map((change, index) => (
+              <div key={index}>
+                <div className="flex flex-col space-y-1">
+                  <div className="flex items-center justify-between"></div>
+                </div>
+
+                <div className="mt-4 bg-black p-4 rounded text-gray-500">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      {diffCode && diffCode.path == change.path ? (
+                        <>
+                          <ChevronDownIcon
+                            onClick={() => {
+                              setDiffCode({});
+                            }}
+                            className="w-5 h-5 cursor-pointer"
+                          />
+                          <span>Hide Diff Editor</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronRightIcon
+                            onClick={() => {
+                              ViewDif(change);
+                            }}
+                            className="w-5 h-5 cursor-pointer"
+                          />
+                          <span>Show Diff Editor</span>
+                        </>
+                      )}
+                    </div>
+                    <span className="text-sm font-mono">
+                      {change.type + " : " + change.path}
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <CopyIcon className="w-5 h-5" />
+                      <ExternalLinkIcon className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <pre className="mt-2 text-xs font-mono overflow-auto">
+                    {diffCode && diffCode.path == change.path ? (
+                      <div className=" w-full">
+                        <DiffEditor
+                          theme="vs-dark"
+                          height="400px"
+                          language={diffCode.language}
+                          original={
+                            change.type == "create" ? "" : diffCode.oldContent
+                          }
+                          modified={diffCode.content3}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <code>
+                          {change.content.split("\n").map((line, index) => {
+                            let classs;
+                            if (line.startsWith("+")) {
+                              classs = "bg-green-800 text-gray-200";
+                            } else if (line.startsWith("-")) {
+                              classs = "bg-red-800 text-gray-200";
+                            } else {
+                              classs = "bg-black text-gray-200";
+                            }
+                            return (
+                              <span key={index} className={classs}>
+                                {line + "\n"}
+                              </span>
+                            );
+                          })}
+                        </code>
+                      </>
+                    )}
+                  </pre>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {modifiedFiles.length > 0 && (
+          <div>
+            {modifiedFiles.map((file, index) => (
+              <div key={index}>
+                {file.status.startsWith("*") ? (
+                  <input type="checkbox"></input>
+                ) : (
+                  <input type="checkbox" checked></input>
+                )}
+                {file.file} is {file.status}
+              </div>
+            ))}
+            <button
+              className="bg-blue-500 hover:bg-blue-600 px-1"
+              onClick={gitAdd}
+            >
+              Add All
+            </button>
+            <button
+              className="bg-blue-500 hover:bg-blue-600 px-1"
+              onClick={makeCommit}
+            >
+              Commit
+            </button>
+          </div>
+        )}
+        <button
+          className="bg-blue-500 hover:bg-blue-600 px-1"
+          onClick={gitPush}
+        >
+          Push
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const RightTop = ({
+  branches,
+  currentBranch,
+  setCurrentBranch,
+  gitFetch,
+  gitPull,
+  fetchMessage,
+  workerThread,
+  gitStatus,
+}) => {
+  return (
+    <div className="flex items-center justify-between p-4 border-b border-gray-600 text-sm">
+      <div className="flex items-center space-x-2">
+        <GitCommitIcon className="w-5 h-5" />
+        <select
+          value={currentBranch}
+          onChange={async (event) => {
+            setCurrentBranch(event.target.value);
+            await workerThread.checkout({ ref: event.target.value });
+            gitStatus();
+          }}
+          className="text-lg my-2 py-2 w-full font-semibold text-light bg-dark"
+        >
+          {branches.map((branch, index) => (
+            <option key={index}>{branch}</option>
+          ))}
+        </select>
+        <button
+          className="text-lg my-1 py-2  px-8 min-w-fit font-semibold text-light bg-dark flex flex-col justify-between"
+          onClick={gitFetch}
+        >
+          <span className="text-xs text-bold">Fetch</span>{" "}
+          <span className="text-xs">{fetchMessage}</span>
+        </button>
+        <button
+          className="text-lg my-1 py-2  px-8 min-w-fit font-semibold text-light bg-dark"
+          onClick={gitPull}
+        >
+          Pull
+        </button>
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <AlertCircleIcon className="w-5 h-5 text-red-500" />
+        <span className="text-sm">Cannot push</span>
+      </div>
+    </div>
+  );
+};
+
+const LeftTop = ({
+  repo,
+  setRepo,
+  doFullClone,
+  allRepos,
+  gitStatus,
+  getAllPuterFiles,
+  syncDirectory,
+  dirName,
+}) => {
+  if (!allRepos) return null;
+
+  return (
+    <div className="p-0">
+      <div className="flex items-center justify-between">
+        <select
+          value={repo}
+          onChange={(event) => setRepo(event.target.value)}
+          className="text-lg my-2 py-2 w-full font-semibold text-light bg-dark"
+        >
+          {allRepos.map((repot, index) => (
+            <option key={index}>{repot}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* <h2 className="mt-2 mb-4 text-sm font-medium">{repo}</h2> */}
+      <div className="flex space-x-2 justify-between p-4">
+        <form className="flex w-full space-x-2 justify-between">
+          <input
+            type="text"
+            placeholder="Enter repo name"
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            className="mt-2 mb-4 text-sm font-medium text-black"
+          />
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              doFullClone();
+            }}
+            className="bg-blue-600 px-1 hover:bg-blue-700"
+          >
+            Clone on Browser
+          </button>
+        </form>
+        <button
+          className="bg-blue-600 px-1 hover:bg-blue-700"
+          onClick={gitStatus}
+        >
+          Status
+        </button>
+      </div>
+      <div className="flex space-x-2">
+        <button
+          className="bg-blue-500 hover:bg-blue-600 px-1"
+          onClick={getAllPuterFiles}
+        >
+          Import From Puter
+        </button>
+        <button
+          onClick={syncDirectory}
+          className="bg-blue-500 hover:bg-blue-600 px-1"
+        >
+          Save to Puter
+        </button>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(dirName);
+            } else {
+              console.log("Clipboard API not available");
+              console.log("doing the other way");
+              const textarea = document.createElement("textarea");
+              textarea.textContent = dirName;
+              document.body.appendChild(textarea);
+              textarea.select();
+              document.execCommand("copy");
+              document.body.removeChild(textarea);
+            }
+          }}
+          className="bg-blue-500 hover:bg-blue-600 px-1"
+        >
+          Copy App Dir
+        </button>
+      </div>
+    </div>
+  );
+};
 
 function AlertCircleIcon(props) {
   return (
