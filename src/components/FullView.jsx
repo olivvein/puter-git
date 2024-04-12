@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 /**
  * v0 by Vercel.
  * @see https://v0.dev/t/DpkWciPvvTA
@@ -5,6 +6,7 @@
  */
 
 import { useState, useEffect, SVGProps } from "react";
+import moment from "moment";
 
 import FS from "@isomorphic-git/lightning-fs";
 import MagicPortal from "magic-portal";
@@ -41,6 +43,12 @@ export default function Component({ name }) {
   const [diffCode, setDiffCode] = useState("");
   const [allRepos, setAllRepos] = useState([]);
   const [fetchMessage, setFetchMessage] = useState("");
+  const [progressPct, setProgressPct] = useState(0);
+  const [modifiedFiles, setModifiedFiles] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [currentBranch, setCurrentBranch] = useState("");
+  const [fetchTime, setFetchTime] = useState(0);
+  const [commitDescription, setCommitDescription] = useState("");
 
   const puter = window.puter;
 
@@ -75,6 +83,22 @@ export default function Component({ name }) {
     updateUser();
   }, []);
 
+  useEffect(() => {
+    if (!workerThread) return;
+    if (currentBranch == "") return;
+
+    const id = setInterval(() => {
+      gitFetch();
+      //store current timestamp
+      const dateUnix = Math.floor(Date.now() / 1000);
+      setFetchTime(dateUnix);
+    }, 60*1000);
+
+    gitFetch();
+
+    return () => clearInterval(id);
+  }, [currentBranch]);
+
   const gitAdd = async (path) => {
     await workerThread.setDir("/" + repo);
     let filesList = await workerThread.listFiles({});
@@ -99,6 +123,7 @@ export default function Component({ name }) {
 
   const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
   const [commitAuthorName, setCommitAuthorName] = useState("");
+  const [commitsBehinds, setCommitsBehinds] = useState(0);
 
   const makeCommit = async () => {
     const commitArgs = {
@@ -107,11 +132,13 @@ export default function Component({ name }) {
         email: commitAuthorEmail,
       },
       message: commitMessage,
+      description: commitDescription,
     };
     console.log(commitArgs);
     const oiid = await gitCommit(commitArgs);
     console.log("Commited");
     console.log(oiid);
+    gitStatus();
   };
 
   const gitPush = async () => {
@@ -123,10 +150,6 @@ export default function Component({ name }) {
       url: "https://github.com/" + repo,
     });
   };
-
-  const [modifiedFiles, setModifiedFiles] = useState([]);
-  const [branches, setBranches] = useState([]);
-  const [currentBranch, setCurrentBranch] = useState("");
 
   const gitPull = async () => {
     try {
@@ -146,11 +169,31 @@ export default function Component({ name }) {
     console.log("Fetch");
     setFetchMessage("Fetching...");
     try {
-      await workerThread.fetch({
+      const theFetch = await workerThread.fetch({
         corsProxy: "https://cors.isomorphic-git.org",
         url: "https://github.com/" + repo,
         depth: 20,
+        ref: currentBranch,
       });
+      console.log(theFetch);
+      if (theFetch.fetchHead != commits[0].oid) {
+        console.log("Not up to date");
+        console.log(theFetch.fetchHead);
+        let histCommit = 0;
+        let commitBehind = 0;
+        for (const commit of commits) {
+          if (theFetch.fetchHead == commit.oid) {
+            console.log("Found the commit");
+            console.log(commit);
+            histCommit = commitBehind;
+
+            break;
+          }
+          commitBehind = commitBehind + 1;
+        }
+        console.log("Commit behind", commitBehind);
+        setCommitsBehinds(commitBehind);
+      }
       gitStatus();
     } catch (error) {
       console.log(error);
@@ -391,6 +434,7 @@ export default function Component({ name }) {
     console.time("syncDirectory");
     console.log("Syncing directory");
     setLoading(true);
+    setProgressPct(0);
     const fileMap = await getAllFiles();
     setLoadingMessage("Clearing dir :" + repo);
     try {
@@ -403,6 +447,7 @@ export default function Component({ name }) {
     const uploadPhases = fileMap.length;
     let thePhase = 0;
     for (const theDir of fileMap) {
+      setProgressPct((thePhase / uploadPhases) * 100);
       const theDirPath = theDir.dirname;
       const theFiles = theDir.files;
       const theFilesAsFile = [];
@@ -437,7 +482,7 @@ export default function Component({ name }) {
       console.log("Uploading files to puter", theDir.dirname);
       console.log("Upload Phase:", thePhase, "/", uploadPhases);
       setLoadingMessage("Upload Phase:", thePhase, "/", uploadPhases);
-
+      setProgressPct((thePhase / uploadPhases) * 100);
       setLoadingMessage("Uploading files to puter :" + theDir.dirname);
       await puter.fs.mkdir(theDir.dirname, { createMissingParents: true });
       const allUploaded = await puter.fs.upload(
@@ -492,8 +537,11 @@ export default function Component({ name }) {
     return [allFiles, UniqueDirs];
   };
 
+  //import from puter
   const getAllPuterFiles = async () => {
+    setProgressPct(0);
     setLoading(true);
+    setProgressPct(0);
     setLoadingMessage("Reading files from puter");
     const [files, dirs] = await recursiveReadDir(repo);
 
@@ -532,6 +580,7 @@ export default function Component({ name }) {
     let task = 0;
     const taskLength = allPaths.length;
     for (const path of allPaths) {
+      setProgressPct((task / taskLength) * 100);
       console.log("Task", task, "/", taskLength);
       console.log("Reading content of ", path);
       const data = await puter.fs.read("." + path);
@@ -601,6 +650,7 @@ export default function Component({ name }) {
     setChanges([]);
     setCommits([]);
     setLoading(true);
+    setProgressPct(0);
     if (!workerThread) {
       console.log("Worker thread not ready");
       return;
@@ -621,6 +671,7 @@ export default function Component({ name }) {
 
         setLoadingMessage("Getting commits");
         gitStatus();
+        setProgressPct(100);
         setLoading(false);
 
         // Gérer la résolution de la promesse ici
@@ -693,6 +744,7 @@ export default function Component({ name }) {
   };
 
   const checkoutBranch = async (branch) => {
+    setCommitsBehinds(0);
     setCurrentBranch(branch);
     await workerThread.checkout({ ref: branch });
     setTimeout(() => {
@@ -701,10 +753,24 @@ export default function Component({ name }) {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-gray-800 text-white">
+    <div className="flex h-screen w-screen bg-gray-800 text-white justify-center">
       {loading && (
-        <span className="bg-gray-400/30 backdrop-blur-md filter-blur rounded p-2 m-2 w-full h-full absolute top-0 left-0 text-black flex justify-center items-center">
-          {loadingMessage}
+        <span className="p-20 m-2 w-full h-full absolute top-0 left-0 text-black flex flex-col justify-center items-center">
+          <div className="bg-gray-400/30 backdrop-blur-md filter-blur rounded  m-20 w-full h-full flex flex-col items-center px-4">
+            <div className="flex flex-row justify-center items-center w-full h-1/2">
+              <span>{loadingMessage}</span>
+            </div>
+
+            <div className="flex row w-full h-12 bg-gray-200 rounded-full ">
+              <div
+                className="h-full text-center justify-center items-center text-xs text-white bg-green-500 rounded-full flex"
+                style={{ width: `${progressPct}%` }}
+              ></div>
+              <span className="flex justify-center text-center text-lg absolute w-full mt-2 min-w-inset">
+                {progressPct.toFixed(0)}%
+              </span>
+            </div>
+          </div>
         </span>
       )}
 
@@ -750,6 +816,10 @@ export default function Component({ name }) {
         setCommitAuthorEmail={setCommitAuthorEmail}
         setCommitAuthorName={setCommitAuthorName}
         setCommitMessage={setCommitMessage}
+        commitsBehinds={commitsBehinds}
+        fetchTime={fetchTime}
+        commitDescription={commitDescription}
+        setCommitDescription={setCommitDescription}
       />
     </div>
   );
@@ -825,6 +895,10 @@ const Rightpannel = ({
   setCommitAuthorEmail,
   setCommitAuthorName,
   setCommitMessage,
+  commitsBehinds,
+  fetchTime,
+  commitDescription,
+  setCommitDescription,
 }) => {
   return (
     <div className="flex flex-col w-2/3">
@@ -838,6 +912,8 @@ const Rightpannel = ({
         workerThread={workerThread}
         gitStatus={gitStatus}
         checkoutBranch={checkoutBranch}
+        fetchTime={fetchTime}
+        
       />
       <div className="flex-grow p-4 overflow-auto">
         {myCommitAuthor && (
@@ -964,28 +1040,45 @@ const Rightpannel = ({
             <div className="flex flex-col justify-start w-1/2 mt-4">
               <form className="w-full">
                 <textarea
-                  placeholder="Commit Message"
+                  placeholder="Commit Message (Required)"
                   value={commitMessage}
                   onChange={(e) => setCommitMessage(e.target.value)}
                   className="text-sm font-medium bg-gray-800 text-white  border border-gray-700 p-2 rounded w-full h-32"
                 ></textarea>
+                <textarea
+                  placeholder="Description"
+                  value={commitDescription}
+                  onChange={(e) => {setCommitDescription(e.target.value)}}
+                  className="text-sm font-medium bg-gray-800 text-white  border border-gray-700 p-2 rounded w-full h-32"
+                ></textarea>
               </form>
-             
             </div>
             <button
-                className="bg-blue-500 hover:bg-blue-600 p-0 m-0 rounded w-1/2 mt-2"
-                onClick={makeCommit}
-              >
-                Commit to {currentBranch}
-              </button>
+              className="bg-blue-500 hover:bg-blue-600 p-0 m-0 rounded w-1/2 mt-2"
+              onClick={makeCommit}
+            >
+              Commit to {currentBranch}
+            </button>
           </div>
         )}
-        <button
-          className="bg-red-800 hover:bg-red-700 p-0 m-0 rounded w-1/2 mt-2"
-          onClick={gitPush}
-        >
-          Push
-        </button>
+
+        {commitsBehinds > 0 && (
+          <div
+            className="
+          flex flex-col justify-between items-center mt-8 p-2 rounded text-white
+          "
+          >
+            <span className="text-sm">
+              You are {commitsBehinds} to Push
+            </span>
+            <button
+              className="bg-red-800 hover:bg-red-700 p-0 m-0 rounded w-1/2 mt-2"
+              onClick={gitPush}
+            >
+              Push
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1001,6 +1094,7 @@ const RightTop = ({
   workerThread,
   gitStatus,
   checkoutBranch,
+  fetchTime,
 }) => {
   return (
     <div className="flex items-center justify-between p-4 border-b border-gray-600 text-sm">
@@ -1021,7 +1115,9 @@ const RightTop = ({
           className="text-lg my-1 py-2  px-8 min-w-fit font-semibold text-light bg-dark flex flex-col justify-between"
           onClick={gitFetch}
         >
-          <span className="text-xs text-bold">Fetch</span>{" "}
+          <span className="text-xs text-bold">
+            Fetch {fetchTime==0?" (Not Fetched)":moment(fetchTime * 1000).fromNow()}
+          </span>{" "}
           <span className="text-xs">{fetchMessage}</span>
         </button>
         <button

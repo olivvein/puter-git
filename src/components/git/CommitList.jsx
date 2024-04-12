@@ -25,6 +25,9 @@ const CommitList = ({ commits, checkout, compare }) => {
               <span className="ml-2">
                 {moment(commit.commit.author.timestamp * 1000).fromNow()}
               </span>{" "}
+              <span className="ml-2">
+              {commit.oid.substring(0, 7)}
+              </span>
             </span>
           </div>
 
