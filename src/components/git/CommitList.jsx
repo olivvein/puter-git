@@ -10,7 +10,7 @@ const CommitList = ({ commits, checkout, compare }) => {
           className={`flex w-full flex-row justify-between items-center space-x-2 border-b border-black p-1`}
           
         >
-          <div className="flex flex-col cursor-pointer hover:bg-gray-700 w-10/12 p-1" onClick={() => {
+          <div className="flex flex-col cursor-pointer hover:bg-gray-700 w-full p-1" onClick={() => {
             compare(commit, index);
           }}>
             <span className="text-bold my-1">
@@ -31,7 +31,7 @@ const CommitList = ({ commits, checkout, compare }) => {
             </span>
           </div>
 
-          <div className="flex flex-col w-2/12">
+          {/* <div className="flex flex-col w-2/12">
             <button
             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-1 rounded text-xs"
               onClick={() => {
@@ -40,7 +40,7 @@ const CommitList = ({ commits, checkout, compare }) => {
             >
               CheckOut
             </button>
-          </div>
+          </div> */}
         </div>
       ))}
     </div>

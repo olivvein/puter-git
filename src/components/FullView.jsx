@@ -83,21 +83,17 @@ export default function Component({ name }) {
     updateUser();
   }, []);
 
-  useEffect(() => {
-    if (!workerThread) return;
-    if (currentBranch == "") return;
+  // useEffect(() => {
+  //   if (!workerThread) return;
+  //   if (currentBranch == "") return;
 
-    const id = setInterval(() => {
-      gitFetch();
-      //store current timestamp
-      const dateUnix = Math.floor(Date.now() / 1000);
-      setFetchTime(dateUnix);
-    }, 60*1000);
+   
+  //   setTimeout(() => {
 
-    gitFetch();
+  //   gitFetch();
+  //   }, 2000);
 
-    return () => clearInterval(id);
-  }, [currentBranch]);
+  // }, [currentBranch]);
 
   const gitAdd = async (path) => {
     await workerThread.setDir("/" + repo);
@@ -142,11 +138,11 @@ export default function Component({ name }) {
   };
 
   const gitPush = async () => {
-    alert("Pushing is not allowed yet :(");
+    alert("Push is disabled for now 😅");
     return;
     await workerThread.push({
       remote: "origin",
-      ref: "main",
+      ref: currentBranch,
       url: "https://github.com/" + repo,
     });
   };
@@ -180,21 +176,23 @@ export default function Component({ name }) {
         console.log("Not up to date");
         console.log(theFetch.fetchHead);
         let histCommit = 0;
-        let commitBehind = 0;
+        let numCommits = 0;
+        let commitBehind = -1;
         for (const commit of commits) {
           if (theFetch.fetchHead == commit.oid) {
             console.log("Found the commit");
             console.log(commit);
+            commitBehind = numCommits;
             histCommit = commitBehind;
 
             break;
           }
-          commitBehind = commitBehind + 1;
+          numCommits = numCommits + 1;
         }
         console.log("Commit behind", commitBehind);
         setCommitsBehinds(commitBehind);
       }
-      gitStatus();
+      //gitStatus();
     } catch (error) {
       console.log(error);
     }
@@ -246,6 +244,7 @@ export default function Component({ name }) {
     const curBranch = await workerThread.currentBranch({});
     console.log(curBranch);
     setCurrentBranch(curBranch);
+    
   };
 
   const addToChanges = async (change) => {
@@ -515,15 +514,26 @@ export default function Component({ name }) {
     return;
   };
 
-  const recursiveReadDir = async (dir) => {
+
+  const recursiveReadDir = async (dir,timeStart) => {
+    let progress = ((Date.now() - timeStart));
+    progress = progress / 1000;
+      console.log("Progress",progress);
+      setProgressPct(progress);
+    //wait a bit
+    
     console.log("Reading dir : ", dir);
     const listitems = await puter.fs.readdir(dir);
+    
+      //to seconds
+      
     const allFiles = [];
     const allDirs = [];
     for (const item of listitems) {
+
       if (item.is_dir) {
         allDirs.push(item.path);
-        const [files, ddirs] = await recursiveReadDir(item.path);
+        const [files, ddirs] = await recursiveReadDir(item.path,timeStart);
         allDirs.push(...ddirs);
         allFiles.push(...files);
       } else {
@@ -534,8 +544,11 @@ export default function Component({ name }) {
     }
 
     const UniqueDirs = Array.from(new Set(allDirs));
+    
     return [allFiles, UniqueDirs];
   };
+
+  
 
   //import from puter
   const getAllPuterFiles = async () => {
@@ -543,7 +556,7 @@ export default function Component({ name }) {
     setLoading(true);
     setProgressPct(0);
     setLoadingMessage("Reading files from puter");
-    const [files, dirs] = await recursiveReadDir(repo);
+    const [files, dirs] = await recursiveReadDir(repo,Date.now());
 
     console.log(dirs);
     const repoDirs = repo.split("/");
@@ -913,6 +926,7 @@ const Rightpannel = ({
         gitStatus={gitStatus}
         checkoutBranch={checkoutBranch}
         fetchTime={fetchTime}
+        commitsBehinds={commitsBehinds}
         
       />
       <div className="flex-grow p-4 overflow-auto">
@@ -1020,24 +1034,34 @@ const Rightpannel = ({
         )}
         {modifiedFiles.length > 0 && (
           <div>
+            <div className="
+          flex flex-col justify-between items-center mt-8 m-20  rounded bg-blue-900 text-white border
+          ">
+            <span className="w-full bg-black p-1 pl-1 m-0">
+            <h2 className="text-md pl-1">{modifiedFiles.length} Modified Files</h2>
+            </span>
+            
             {modifiedFiles.map((file, index) => (
-              <div key={index}>
+              <div key={index} className="flex border-b border-black w-full p-1 pl-2">
                 {file.status.startsWith("*") ? (
                   <input type="checkbox"></input>
                 ) : (
                   <input type="checkbox" checked></input>
                 )}
-                {file.file} is {file.status}
+                <span className="ml-2">{file.file} is {file.status}</span>
               </div>
             ))}
             <button
-              className="bg-blue-500 hover:bg-blue-600 px-1"
+              className="bg-blue-500 hover:bg-blue-600 px-1 w-full"
               onClick={gitAdd}
             >
               Add All
             </button>
+            </div>
 
-            <div className="flex flex-col justify-start w-1/2 mt-4">
+            <div className="
+          flex flex-col justify-between items-center mt-8 m-20 p-2 rounded bg-blue-900 text-white border
+          ">
               <form className="w-full">
                 <textarea
                   placeholder="Commit Message (Required)"
@@ -1052,30 +1076,31 @@ const Rightpannel = ({
                   className="text-sm font-medium bg-gray-800 text-white  border border-gray-700 p-2 rounded w-full h-32"
                 ></textarea>
               </form>
-            </div>
-            <button
-              className="bg-blue-500 hover:bg-blue-600 p-0 m-0 rounded w-1/2 mt-2"
+              <button
+              className="bg-blue-500 hover:bg-blue-600  rounded mt-2  p-2 w-full"
               onClick={makeCommit}
             >
               Commit to {currentBranch}
             </button>
+            </div>
+           
           </div>
         )}
 
         {commitsBehinds > 0 && (
           <div
             className="
-          flex flex-col justify-between items-center mt-8 p-2 rounded text-white
+          flex flex-col justify-between items-center mt-8 m-20 p-2 rounded bg-blue-900 text-white border
           "
           >
             <span className="text-sm">
-              {`You have ${commitsBehinds} local commit${commitsBehinds>1?"s":""} to push on github`}
+              {`You have ${commitsBehinds} local commit${commitsBehinds>1?"s":""} waiting to be pushed to github`}
             </span>
             <button
-              className="bg-red-800 hover:bg-red-700 p-0 m-0 rounded w-1/2 mt-2"
+              className="bg-gray-500 hover:bg-gray-700 p-0 m-0 rounded w-1/2 mt-2 text-black"
               onClick={gitPush}
             >
-              Push
+              Push to {currentBranch}
             </button>
           </div>
         )}
@@ -1095,6 +1120,7 @@ const RightTop = ({
   gitStatus,
   checkoutBranch,
   fetchTime,
+  commitsBehinds,
 }) => {
   return (
     <div className="flex items-center justify-between p-4 border-b border-gray-600 text-sm">
@@ -1120,12 +1146,21 @@ const RightTop = ({
           </span>{" "}
           <span className="text-xs">{fetchMessage}</span>
         </button>
+        {commitsBehinds > 0 ? (
+          <button
+            className="text-lg my-1 py-2  px-8 min-w-fit font-semibold text-light bg-dark"
+            onClick={gitPull}
+          >
+            Push {commitsBehinds} commit{commitsBehinds > 1 ? "s" : ""}
+          </button>
+        ):(
         <button
-          className="text-lg my-1 py-2  px-8 min-w-fit font-semibold text-light bg-dark"
+          className={`text-lg my-1 py-2  px-8 min-w-fit font-semibold text-light bg-dark ${commitsBehinds==-1?"bg-green-500":""}`}
           onClick={gitPull}
         >
           Pull
         </button>
+        )}
       </div>
 
       <div className="flex items-center space-x-2">
