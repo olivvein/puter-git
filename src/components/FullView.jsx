@@ -1069,7 +1069,7 @@ const Rightpannel = ({
           "
           >
             <span className="text-sm">
-              You are {commitsBehinds} to Push
+              {`You have ${commitsBehinds} local commit${commitsBehinds>1?"s":""} to push on github`}
             </span>
             <button
               className="bg-red-800 hover:bg-red-700 p-0 m-0 rounded w-1/2 mt-2"
