@@ -51,7 +51,10 @@ export default function Component({ name }) {
         await puter.auth.signIn();
       }
       const user = await puter.auth.getUser();
+      console.log(user);
       setUsername(user.username);
+      setCommitAuthorName(user.username);
+      setCommitAuthorEmail(user.email);
       const helloFile = await puter.fs.write("hello.txt", "hello");
       console.log(helloFile.dirname);
       setDirName(helloFile.dirname);
@@ -84,19 +87,26 @@ export default function Component({ name }) {
         hasAdded = true;
       }
     }
+    if (hasAdded) {
+      gitStatus();
+    }
   };
 
   const gitCommit = async (message) => {
     await workerThread.commit(message);
+    gitStatus();
   };
+
+  const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
+  const [commitAuthorName, setCommitAuthorName] = useState("");
 
   const makeCommit = async () => {
     const commitArgs = {
       author: {
-        name: "samlepirate",
-        email: "samlepirate@gmail.com",
+        name: commitAuthorName,
+        email: commitAuthorEmail,
       },
-      message: "modified Title",
+      message: commitMessage,
     };
     console.log(commitArgs);
     const oiid = await gitCommit(commitArgs);
@@ -124,7 +134,7 @@ export default function Component({ name }) {
         corsProxy: "https://cors.isomorphic-git.org",
         url: "https://github.com/" + repo,
         depth: 20,
-        author: { name: "samlepirate", email: "samlepirate@gmail.com" },
+        author: { name: "user", email: "e.mai@le.com" },
       });
       gitStatus();
     } catch (error) {
@@ -150,6 +160,12 @@ export default function Component({ name }) {
   const gitStatus = async () => {
     console.log("Status");
     console.log("Reading dir : ", repo);
+    setDiffCode({});
+    setMyCommitAuthor("");
+    setCommitMessage("");
+    setCommitOid("");
+    setChanges([]);
+    setCommitChanges({ addition: 0, deletion: 0 });
 
     //setFetchMessage("");
     await workerThread.setDir("/" + repo);
@@ -477,6 +493,8 @@ export default function Component({ name }) {
   };
 
   const getAllPuterFiles = async () => {
+    setLoading(true);
+    setLoadingMessage("Reading files from puter");
     const [files, dirs] = await recursiveReadDir(repo);
 
     console.log(dirs);
@@ -518,7 +536,10 @@ export default function Component({ name }) {
       console.log("Reading content of ", path);
       const data = await puter.fs.read("." + path);
       console.log("Writing to fs :", path);
-      const relativePath = path.replace("/" + repo+"/", "");
+      setLoadingMessage(
+        "Writing to fs :" + path + " " + task + "/" + taskLength
+      );
+      const relativePath = path.replace("/" + repo + "/", "");
       console.log("Relative path", relativePath);
       try {
         //await workerThread.add({ filepath: relativePath });
@@ -537,18 +558,20 @@ export default function Component({ name }) {
         } else {
           console.log("File saved : ", relativePath);
 
-          try{
-            const status = await workerThread.status({ filepath: relativePath });
-            console.log("Status", status);  
+          try {
+            const status = await workerThread.status({
+              filepath: relativePath,
+            });
+            console.log("Status", status);
             if (status != "unmodified" || status != "*unmodified") {
               console.log("Adding " + relativePath);
               await workerThread.add({ filepath: relativePath });
+              setLoadingMessage("git add :" + relativePath);
             }
-          }
-          catch(error){
+          } catch (error) {
             console.log(error);
           }
-          
+
           //readDir(dir);
           //setLoading(false);
         }
@@ -565,6 +588,8 @@ export default function Component({ name }) {
       //     console.log(error);
       //   }
     }
+    setLoading(false);
+    gitStatus();
   };
 
   const doFullClone = async () => {
@@ -633,7 +658,7 @@ export default function Component({ name }) {
     console.log("Checking out");
     console.log(commit);
     await checkout(commit.commit.oid);
-    //gitStatus();
+    gitStatus();
   };
 
   const compareAction = async (commit, index) => {
@@ -670,7 +695,9 @@ export default function Component({ name }) {
   const checkoutBranch = async (branch) => {
     setCurrentBranch(branch);
     await workerThread.checkout({ ref: branch });
-    gitStatus();
+    setTimeout(() => {
+      gitStatus();
+    }, 1000);
   };
 
   return (
@@ -718,6 +745,11 @@ export default function Component({ name }) {
         fetchMessage={fetchMessage}
         commitChanges={commitChanges}
         checkoutBranch={checkoutBranch}
+        commitAuthorName={commitAuthorName}
+        commitAuthorEmail={commitAuthorEmail}
+        setCommitAuthorEmail={setCommitAuthorEmail}
+        setCommitAuthorName={setCommitAuthorName}
+        setCommitMessage={setCommitMessage}
       />
     </div>
   );
@@ -788,6 +820,11 @@ const Rightpannel = ({
   gitStatus,
   commitChanges,
   checkoutBranch,
+  commitAuthorName,
+  commitAuthorEmail,
+  setCommitAuthorEmail,
+  setCommitAuthorName,
+  setCommitMessage,
 }) => {
   return (
     <div className="flex flex-col w-2/3">
@@ -923,16 +960,28 @@ const Rightpannel = ({
             >
               Add All
             </button>
+
+            <div className="flex flex-col justify-start w-1/2 mt-4">
+              <form className="w-full">
+                <textarea
+                  placeholder="Commit Message"
+                  value={commitMessage}
+                  onChange={(e) => setCommitMessage(e.target.value)}
+                  className="text-sm font-medium bg-gray-800 text-white  border border-gray-700 p-2 rounded w-full h-32"
+                ></textarea>
+              </form>
+             
+            </div>
             <button
-              className="bg-blue-500 hover:bg-blue-600 px-1"
-              onClick={makeCommit}
-            >
-              Commit
-            </button>
+                className="bg-blue-500 hover:bg-blue-600 p-0 m-0 rounded w-1/2 mt-2"
+                onClick={makeCommit}
+              >
+                Commit to {currentBranch}
+              </button>
           </div>
         )}
         <button
-          className="bg-blue-500 hover:bg-blue-600 px-1"
+          className="bg-red-800 hover:bg-red-700 p-0 m-0 rounded w-1/2 mt-2"
           onClick={gitPush}
         >
           Push
